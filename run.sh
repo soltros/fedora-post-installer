@@ -47,7 +47,7 @@ echo "Installing workstation packages..."
 
 DNF_PACKAGES=(
     # Shells & Terminal
-    fish zsh ptyxis starship just btop ripgrep fd-find git-delta
+    fish zsh just btop ripgrep fd-find git-delta
     
     # System Core & Hardware
     lm_sensors udisks2 udiskie linux-firmware* powertop smartmontools 
