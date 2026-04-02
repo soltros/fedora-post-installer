@@ -20,28 +20,20 @@ fi
 
 echo "--- Starting Fedora $FEDORA_VERSION KDE Heavy Workstation Setup ---"
 
-# 1. Add current user to wheel group
-if [ -n "$SUDO_USER" ]; then
-    usermod -aG wheel "$SUDO_USER"
-    echo "Added $SUDO_USER to the wheel group."
-fi
-
-# 2. Repository Configuration (RPM Fusion & Terra)
+# 1. Repository Configuration (RPM Fusion & Terra)
 echo "Configuring repositories..."
-# Install plugins and RPM Fusion
 dnf5 install -y dnf5-plugins \
     https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
     https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
 
-# Add Terra Repository
 dnf5 config-manager add-repo https://terra.fyralabs.com/terra.repo
 echo "Terra repository and RPM Fusion enabled."
 
-# 3. KDE Group Installs
+# 2. KDE Group Installs
 echo "Installing KDE Environment Groups..."
 dnf5 group install --skip-broken -y "kde-desktop" "kde-apps" "kde-media"
 
-# 4. Comprehensive DNF Package Install
+# 3. Comprehensive DNF Package Install
 echo "Installing workstation packages..."
 
 DNF_PACKAGES=(
@@ -64,9 +56,6 @@ DNF_PACKAGES=(
     pipewire-libs pipewire-plugin-libcamera pipewire-pulseaudio pipewire-utils 
     wireplumber wireplumber-libs playerctl
     
-    # Bluetooth
-    bluez bluez-cups bluez-libs bluez-obexd
-    
     # Virtualization & Networking
     libvirt-daemon-kvm libvirt-client tailscale nebula nmap iperf3 
     wireguard-tools
@@ -84,27 +73,17 @@ DNF_PACKAGES=(
 dnf5 upgrade -y --refresh
 dnf5 install -y "${DNF_PACKAGES[@]}"
 
-# 5. Install Feishin (Latest RPM)
-echo "Installing Feishin..."
-FEISHIN_URL=$(curl -s https://api.github.com/repos/jeffvli/feishin/releases/latest | grep "browser_download_url.*rpm" | cut -d '"' -f 4)
-if [ -n "$FEISHIN_URL" ]; then
-    wget -O /tmp/feishin.rpm "$FEISHIN_URL"
-    dnf5 install -y /tmp/feishin.rpm
-    rm /tmp/feishin.rpm
-fi
-
-# 6. Enable Services
+# 4. Enable Services
 echo "Enabling system services..."
 systemctl enable sddm
 systemctl enable --now tailscaled
 systemctl enable --now libvirtd
-systemctl enable --now bluetooth
 systemctl enable --now snapd.socket
 
-# Optional: Classic snap support symlink
+# Classic snap support symlink
 ln -s /var/lib/snapd/snap /snap 2>/dev/null
 
-# 7. Flatpak Setup
+# 5. Flatpak Setup
 echo "Configuring Flatpaks..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
@@ -125,8 +104,9 @@ FLATPAKS=(
     org.kde.kdenlive com.github.hugolabe.Wike org.kde.kcalc com.slack.Slack
     com.github.johnfactotum.Foliate org.kde.filelight org.kde.ark
     org.kde.okular org.mozilla.Thunderbird org.nicotine_plus.Nicotine
-    com.vscodium.codium
+    com.vscodium.codium io.github.victoralvesf.aonsoku
 )
+
 flatpak install -y flathub "${FLATPAKS[@]}"
 
-echo "--- Setup Complete! Please reboot to finalize all changes. ---"
+echo "--- Setup Complete! A system reboot is recommended to initialize the new kernel drivers and groups. ---"
