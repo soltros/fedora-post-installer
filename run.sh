@@ -30,7 +30,7 @@ dnf5 install -y --skip-broken dnf5-plugins \
     https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
     https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
 
-sudo dnf5 config-manager addrepo --from-repofile=https://terra.fyralabs.com/terra.repo
+## - currently broken - ## sudo dnf5 config-manager addrepo --from-repofile=https://terra.fyralabs.com/terra.repo
 
 # 2. KDE Group Installs
 echo "Installing KDE Environment Groups..."
