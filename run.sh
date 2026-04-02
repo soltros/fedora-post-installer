@@ -48,7 +48,7 @@ DNF_PACKAGES=(
     usbutils pciutils fwupd fwupd-plugin-flashrom fwupd-plugin-modem-manager 
     fwupd-plugin-uefi-capsule-data
     
-    # Graphics & Display (SDDM removed as it's pre-installed/enabled)
+    # Graphics & Display
     xorg-x11-server-Xwayland switcheroo-control
     mesa-dri-drivers mesa-filesystem mesa-libEGL mesa-libGL mesa-libgbm 
     mesa-va-drivers mesa-vulkan-drivers
@@ -69,6 +69,9 @@ DNF_PACKAGES=(
     # Filesystems, Desktop Tools & Snaps
     exfatprogs ntfs-3g btrfs-progs gimp deja-dup papirus-icon-theme snapd
     
+    # KDE Apps (Moved from Flatpak)
+    kdenlive kcalc filelight ark okular
+    
     # Themes (Native Repo)
     "materia*"
 )
@@ -78,7 +81,6 @@ dnf5 install -y --skip-broken "${DNF_PACKAGES[@]}"
 
 # 4. Enable Services
 echo "Enabling system services..."
-# SDDM enable removed as it is auto-enabled on KDE spin
 systemctl enable --now tailscaled
 systemctl enable --now libvirtd
 systemctl enable --now snapd.socket
@@ -104,9 +106,8 @@ FLATPAKS=(
     org.gtk.Gtk3theme.adw-gtk3-dark org.gustavoperedo.FontDownloader
     sh.loft.devpod com.heroicgameslauncher.hgl org.prismlauncher.PrismLauncher
     org.blender.Blender org.audacityteam.Audacity org.inkscape.Inkscape
-    org.kde.kdenlive com.github.hugolabe.Wike org.kde.kcalc com.slack.Slack
-    com.github.johnfactotum.Foliate org.kde.filelight org.kde.ark
-    org.kde.okular org.mozilla.Thunderbird org.nicotine_plus.Nicotine
+    com.github.hugolabe.Wike com.slack.Slack
+    com.github.johnfactotum.Foliate org.mozilla.Thunderbird org.nicotine_plus.Nicotine
     com.vscodium.codium io.github.victoralvesf.aonsoku
     org.signal.Signal org.bleachbit.BleachBit com.usebottles.bottles
     md.obsidian.Obsidian com.obsproject.Studio
@@ -155,5 +156,4 @@ EOF
 # Set default shell
 chsh -s "$(which zsh)" "$ACTUAL_USER"
 
-echo "--- Setup Complete! ---"
-echo "Please reboot to apply all system changes and driver updates."
+echo "--- Setup Complete! Please reboot. ---"
