@@ -34,7 +34,7 @@ dnf5 install -y --skip-broken \
     https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
 
 # Terra Repository
-## Broken dnf5 config-manager addrepo --from-repofile=https://terra.fyralabs.com/terra.repo
+dnf install --nogpgcheck --repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' terra-release
 
 echo "Repositories configured."
 
