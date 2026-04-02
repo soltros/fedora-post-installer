@@ -18,19 +18,25 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Determine the actual user behind sudo for Zsh config
+# Identify the actual user for personal configs
 ACTUAL_USER=$SUDO_USER
 USER_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
 
 echo "--- Starting Fedora $FEDORA_VERSION KDE Heavy Workstation Setup ---"
 
-# 1. Repository Configuration (RPM Fusion & Terra)
+# 1. Repository Configuration
 echo "Configuring repositories..."
-dnf5 install -y --skip-broken dnf5-plugins \
+dnf5 install -y --skip-broken dnf5-plugins
+
+# RPM Fusion
+dnf5 install -y --skip-broken \
     https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
     https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
 
-## - currently broken - ## sudo dnf5 config-manager addrepo --from-repofile=https://terra.fyralabs.com/terra.repo
+# Terra Repository
+## Broken dnf5 config-manager addrepo --from-repofile=https://terra.fyralabs.com/terra.repo
+
+echo "Repositories configured."
 
 # 2. KDE Group Installs
 echo "Installing KDE Environment Groups..."
@@ -69,10 +75,10 @@ DNF_PACKAGES=(
     # Filesystems, Desktop Tools & Snaps
     exfatprogs ntfs-3g btrfs-progs gimp deja-dup papirus-icon-theme snapd
     
-    # KDE Apps (Moved from Flatpak)
+    # KDE Apps (DNF versions to avoid Flatpak duplication)
     kdenlive kcalc filelight ark okular
     
-    # Themes (Native Repo)
+    # Themes
     "materia*"
 )
 
@@ -94,23 +100,22 @@ flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.f
 
 FLATPAKS=(
     net.waterfox.waterfox com.discordapp.Discord com.github.tchx84.Flatseal
-    com.bitwarden.desktop com.valvesoftware.Steam org.telegram.desktop
-    it.mijorus.gearlever org.gnome.World.PikaBackup org.videolan.VLC
-    com.github.wwmm.easyeffects io.github.dweymouth.supersonic
-    io.github.dvlv.boxbuddyrs de.leopoldluley.Clapgrep im.nheko.Nheko
-    io.github.flattool.Ignition io.github.flattool.Warehouse
-    io.missioncenter.MissionCenter com.vysp3r.ProtonPlus org.libretro.RetroArch
-    net.lutris.Lutris com.github.iwalton3.jellyfin-media-player
-    io.podman_desktop.PodmanDesktop org.filezillaproject.Filezilla dev.zed.Zed
-    io.github.shiftey.Desktop org.gtk.Gtk3theme.Breeze org.gtk.Gtk3theme.adw-gtk3
+    com.bitwarden.desktop org.telegram.desktop it.mijorus.gearlever 
+    org.gnome.World.PikaBackup org.videolan.VLC com.github.wwmm.easyeffects 
+    io.github.dweymouth.supersonic io.github.dvlv.boxbuddyrs 
+    de.leopoldluley.Clapgrep im.nheko.Nheko io.github.flattool.Ignition 
+    io.github.flattool.Warehouse io.missioncenter.MissionCenter 
+    com.vysp3r.ProtonPlus org.libretro.RetroArch net.lutris.Lutris 
+    com.github.iwalton3.jellyfin-media-player io.podman_desktop.PodmanDesktop 
+    org.filezillaproject.Filezilla dev.zed.Zed io.github.shiftey.Desktop 
+    org.gtk.Gtk3theme.Breeze org.gtk.Gtk3theme.adw-gtk3 
     org.gtk.Gtk3theme.adw-gtk3-dark org.gustavoperedo.FontDownloader
     sh.loft.devpod com.heroicgameslauncher.hgl org.prismlauncher.PrismLauncher
     org.blender.Blender org.audacityteam.Audacity org.inkscape.Inkscape
-    com.github.hugolabe.Wike com.slack.Slack
-    com.github.johnfactotum.Foliate org.mozilla.Thunderbird org.nicotine_plus.Nicotine
-    com.vscodium.codium io.github.victoralvesf.aonsoku
-    org.signal.Signal org.bleachbit.BleachBit com.usebottles.bottles
-    md.obsidian.Obsidian com.obsproject.Studio
+    com.github.hugolabe.Wike com.slack.Slack com.github.johnfactotum.Foliate 
+    org.mozilla.Thunderbird org.nicotine_plus.Nicotine com.vscodium.codium 
+    io.github.victoralvesf.aonsoku org.signal.Signal org.bleachbit.BleachBit 
+    com.usebottles.bottles md.obsidian.Obsidian com.obsproject.Studio
 )
 
 flatpak install -y flathub "${FLATPAKS[@]}"
@@ -123,24 +128,21 @@ if [ ! -d "$USER_HOME/.oh-my-zsh" ]; then
     sudo -u "$ACTUAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 fi
 
-# Install Plugins as the user
+# Install Plugins
 ZSH_CUSTOM="$USER_HOME/.oh-my-zsh/custom"
 sudo -u "$ACTUAL_USER" mkdir -p "$ZSH_CUSTOM/plugins"
 
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
-    sudo -u "$ACTUAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
-fi
-
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
-    sudo -u "$ACTUAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
-fi
+for plugin in zsh-autosuggestions zsh-syntax-highlighting; do
+    if [ ! -d "$ZSH_CUSTOM/plugins/$plugin" ]; then
+        sudo -u "$ACTUAL_USER" git clone "https://github.com/zsh-users/$plugin" "$ZSH_CUSTOM/plugins/$plugin"
+    fi
+done
 
 # Generate .zshrc
 sudo -u "$ACTUAL_USER" tee "$USER_HOME/.zshrc" > /dev/null <<EOF
 export ZSH="\$HOME/.oh-my-zsh"
 ZSH_THEME="terminalparty"
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
-
 source \$ZSH/oh-my-zsh.sh
 
 export LANG=en_US.UTF-8
@@ -153,7 +155,7 @@ if command -v starship &> /dev/null; then
 fi
 EOF
 
-# Set default shell
-chsh -s "$(which zsh)" "$ACTUAL_USER"
+# Use usermod to change shell as root (avoids /etc/shells warnings)
+usermod -s /usr/bin/zsh "$ACTUAL_USER"
 
 echo "--- Setup Complete! Please reboot. ---"
