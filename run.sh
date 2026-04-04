@@ -145,6 +145,9 @@ ZSH_THEME="terminalparty"
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 source \$ZSH/oh-my-zsh.sh
 
+#Alias
+alias update="sudo dnf upgrade -y;sudo flatpak update -y;sudo snap refresh"
+
 export LANG=en_US.UTF-8
 export EDITOR="nano"
 export VISUAL="nano"
