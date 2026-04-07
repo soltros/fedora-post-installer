@@ -155,7 +155,9 @@ echo "Configuring Flatpaks..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install -y flathub "${FLATPAKS[@]}"
 
+# ==========================================
 # 6. NIX PACKAGE MANAGER SETUP
+# ==========================================
 echo "Setting up Determinate Nix and nixpkgs_fedora flake..."
 curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --no-confirm
 
@@ -177,6 +179,12 @@ sudo -H -u "$ACTUAL_USER" tee "$USER_HOME/.config/nixpkgs_fedora/flake.nix" > /d
 }
 EOF
 
+# Ensure Plasma respects Nix applications globally on reboot
+sudo -H -u "$ACTUAL_USER" mkdir -p "$USER_HOME/.config/environment.d"
+sudo -H -u "$ACTUAL_USER" tee "$USER_HOME/.config/environment.d/10-nix.conf" > /dev/null << 'EOF'
+XDG_DATA_DIRS=$HOME/.nix-profile/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+EOF
+
 # Write nixmanager to a temporary file, then move to destination
 cat << 'EOF' > /tmp/nixmanager.sh
 #!/bin/bash
@@ -186,17 +194,48 @@ SCRIPT_NAME=$(basename "$0")
 
 usage() { echo -e "${BLUE}Usage: $SCRIPT_NAME <command> [options]${NC}\nCommands:\n  install <pkg>    Install from nixpkgs\n  remove <pkg>     Remove installed package\n  list             List installed\n  search <query>   Search packages\n  upgrade          Upgrade all"; }
 check_nix() { if ! command -v nix &> /dev/null; then echo -e "${RED}Error: Nix is not installed${NC}" >&2; exit 1; fi; }
+
 update_shortcuts() {
-    echo -e "${BLUE}Updating shortcuts...${NC}"
-    local path="$HOME/.nix-profile"
-    command -v update-desktop-database &> /dev/null && update-desktop-database "$path/share/applications" ~/.local/share/applications/ 2>/dev/null || true
-    command -v update-mime-database &> /dev/null && update-mime-database "$path/share/mime" ~/.local/share/mime/ 2>/dev/null || true
-    command -v gtk-update-icon-cache &> /dev/null && gtk-update-icon-cache -f -t "$path/share/icons/hicolor" ~/.local/share/icons/hicolor/ 2>/dev/null || true
+    echo -e "${BLUE}Syncing applications to desktop menu...${NC}"
+    local nix_apps="$HOME/.nix-profile/share/applications"
+    local local_apps="$HOME/.local/share/applications"
+    local nix_icons="$HOME/.nix-profile/share/icons"
+    local local_icons="$HOME/.local/share/icons"
+    
+    mkdir -p "$local_apps" "$local_icons"
+    
+    # Clean old nixmanager symlinks
+    find "$local_apps" -name "nixmanager-*.desktop" -delete 2>/dev/null
+    
+    # Symlink current .desktop files to DE folder
+    if [ -d "$nix_apps" ]; then
+        for desktop in "$nix_apps"/*.desktop; do
+            [ -e "$desktop" ] || continue
+            local base=$(basename "$desktop")
+            # Link to the absolute path in the Nix store
+            ln -sf "$(readlink -f "$desktop")" "$local_apps/nixmanager-$base"
+        done
+    fi
+    
+    # Recursively symlink icons for immediate rendering
+    if [ -d "$nix_icons" ]; then
+        cp -rsf "$nix_icons/"* "$local_icons/" 2>/dev/null || true
+    fi
+    
+    # Cleanup any dead icon symlinks
+    find "$local_icons" -xtype l -delete 2>/dev/null || true
+    
+    # Force KDE/GNOME to refresh
+    command -v update-desktop-database &> /dev/null && update-desktop-database "$local_apps" 2>/dev/null || true
+    command -v gtk-update-icon-cache &> /dev/null && gtk-update-icon-cache -f -t "$local_icons/hicolor" 2>/dev/null || true
     [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* ]] && { command -v kbuildsycoca6 &> /dev/null && kbuildsycoca6 --noincremental 2>/dev/null || true; }
     command -v xdg-desktop-menu &> /dev/null && xdg-desktop-menu forceupdate 2>/dev/null || true
 }
+
 install_pkg() { nix profile add "$HOME/.config/nixpkgs_fedora#$1" && { echo -e "${GREEN}✓ Installed: $1${NC}"; update_shortcuts; } || exit 1; }
-remove_pkg() { nix profile remove "$HOME/.config/nixpkgs_fedora#$1" && { echo -e "${GREEN}✓ Removed: $1${NC}"; update_shortcuts; } || exit 1; }
+
+# FIXED: remove_pkg now searches by package name, not flake path
+remove_pkg() { nix profile remove "$1" && { echo -e "${GREEN}✓ Removed: $1${NC}"; update_shortcuts; } || exit 1; }
 
 main() {
     check_nix; [[ $# -eq 0 ]] && { usage; exit 1; }
