@@ -42,6 +42,9 @@ echo "Repositories configured."
 echo "Installing KDE Environment Groups..."
 dnf5 group install --skip-broken -y "kde-desktop" "kde-apps" "kde-media"
 
+# 2.5 Remove firefox for Waterfox later on
+sudo dnf -y remove firefox
+
 # 3. Comprehensive DNF Package Install
 echo "Installing workstation packages..."
 
