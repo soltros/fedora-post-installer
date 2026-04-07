@@ -12,7 +12,7 @@ DNF_PACKAGES=(
     usbutils pciutils fwupd fwupd-plugin-flashrom fwupd-plugin-modem-manager 
     fwupd-plugin-uefi-capsule-data xorg-x11-server-Xwayland switcheroo-control
     mesa-dri-drivers mesa-filesystem mesa-libEGL mesa-libGL mesa-libgbm 
-    mesa-va-drivers mesa-vulkan-drivers pipewire pipewire-pulse pipewire-alsa 
+    mesa-va-drivers mesa-vulkan-drivers pipewire pipewire-alsa 
     pipewire-gstreamer pipewire-jack-audio-connection-kit 
     pipewire-jack-audio-connection-kit-libs pipewire-libs 
     pipewire-plugin-libcamera pipewire-pulseaudio pipewire-utils 
