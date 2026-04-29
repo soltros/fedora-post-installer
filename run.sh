@@ -160,23 +160,38 @@ TOLARIA_VER="2026.4.29"
     pushd "$WORK_DIR" > /dev/null
 
     # 1. Download
+    echo "Downloading Tolaria..."
     wget -q "$TOLARIA_URL" -O "input.deb"
 
     # 2. Convert (Uses alien from your DNF_PACKAGES list)
+    echo "Converting DEB to TGZ..."
     sudo alien -tvc "input.deb"
 
     # 3. Extract and Install
-    # We use --strip-components=1 to ignore the 'tolaria-version/' folder alien creates
+    echo "Extracting and syncing files..."
     mkdir -p contents
     tar -xvf "$TOLARIA_TGZ" -C contents/ --strip-components=1
     
     echo "Syncing Tolaria files to system..."
     sudo rsync -avz contents/usr/ /usr/
 
-    # 4. Cleanup
+    # 4. Fix Plasma Menu Placement
+    echo "Fixing desktop menu category..."
+    DESKTOP_FILE="/usr/share/applications/Tolaria.desktop"
+
+    if [ -f "$DESKTOP_FILE" ]; then
+        # Set category to Office and Utility so it shows up in Plasma's menus
+        sudo sed -i 's/^Categories=.*/Categories=Office;Utility;/' "$DESKTOP_FILE"
+        
+        # Force Plasma to refresh the application menu
+        update-desktop-database /usr/share/applications 2>/dev/null
+        echo "✓ Desktop entry updated."
+    fi
+
+    # 5. Cleanup
     popd > /dev/null
     rm -rf "$WORK_DIR"
-    echo "✓ Tolaria installation complete."
+    echo "✓ Tolaria installation and menu fix complete."
 )
 
 # 4. Enable Services
