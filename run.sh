@@ -7,7 +7,7 @@ FEDORA_VERSION=$(rpm -E %fedora)
 PURGE_MODE=false
 
 DNF_PACKAGES=(
-    fish just btop ripgrep fd-find git-delta
+    fish rsync just btop ripgrep fd-find git-delta alien
     lm_sensors udisks2 udiskie linux-firmware* powertop smartmontools 
     usbutils pciutils fwupd fwupd-plugin-flashrom fwupd-plugin-modem-manager 
     fwupd-plugin-uefi-capsule-data xorg-x11-server-Xwayland switcheroo-control
@@ -20,7 +20,8 @@ DNF_PACKAGES=(
     tailscale nebula nmap iperf3 wireguard-tools gamemode gamemode-devel 
     mangohud goverlay corectrl steam-devices steam exfatprogs ntfs-3g 
     btrfs-progs gimp deja-dup papirus-icon-theme snapd kdenlive kcalc 
-    filelight ark okular "materia*"
+    filelight ark okular "materia*" webkit2gtk4.1-devel openssl-devel curl wget file
+    libappindicator-gtk3-devel librsvg2-devel
 )
 
 FLATPAKS=(
@@ -140,6 +141,43 @@ dnf5 -y remove firefox
 echo "Installing workstation packages..."
 dnf5 upgrade -y --refresh
 dnf5 install -y --skip-broken "${DNF_PACKAGES[@]}"
+
+# ==========================================
+# 3.1 Tolaria DEB-to-System Tool
+# ==========================================
+TOLARIA_VER="2026.4.29" 
+
+# Logic: Download DEB -> Convert to TGZ -> Strip top folder -> Sync to /usr
+(
+    set -e
+    echo "Processing Tolaria version ${TOLARIA_VER}..."
+    
+    TOLARIA_URL="https://github.com/refactoringhq/tolaria/releases/download/stable-v${TOLARIA_VER}/Tolaria_${TOLARIA_VER}_amd64.deb"
+    TOLARIA_TGZ="tolaria-${TOLARIA_VER}.tgz"
+    WORK_DIR="/tmp/tolaria_install"
+
+    mkdir -p "$WORK_DIR"
+    pushd "$WORK_DIR" > /dev/null
+
+    # 1. Download
+    wget -q "$TOLARIA_URL" -O "input.deb"
+
+    # 2. Convert (Uses alien from your DNF_PACKAGES list)
+    sudo alien -tvc "input.deb"
+
+    # 3. Extract and Install
+    # We use --strip-components=1 to ignore the 'tolaria-version/' folder alien creates
+    mkdir -p contents
+    tar -xvf "$TOLARIA_TGZ" -C contents/ --strip-components=1
+    
+    echo "Syncing Tolaria files to system..."
+    sudo rsync -avz contents/usr/ /usr/
+
+    # 4. Cleanup
+    popd > /dev/null
+    rm -rf "$WORK_DIR"
+    echo "✓ Tolaria installation complete."
+)
 
 # 4. Enable Services
 echo "Enabling system services..."
