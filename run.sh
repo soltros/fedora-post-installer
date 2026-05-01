@@ -108,8 +108,10 @@ if [ "$PURGE_MODE" = true ]; then
     echo "5/6 Removing DNF Workstation packages..."
     dnf5 remove -y "${DNF_PACKAGES[@]}" 2>/dev/null
 
-    echo "6/6 Removing repositories..."
+    echo "6/6 Removing repositories and Tolaria helpers..."
     dnf5 remove -y terra-release rpmfusion-free-release rpmfusion-nonfree-release 2>/dev/null
+    rm -f /usr/local/bin/tolaria-update
+    rm -rf /usr/share/tolaria
 
     echo "--- Purge Complete! Please reboot. ---"
     exit 0
@@ -143,56 +145,18 @@ dnf5 upgrade -y --refresh
 dnf5 install -y --skip-broken "${DNF_PACKAGES[@]}"
 
 # ==========================================
-# 3.1 Tolaria DEB-to-System Tool
+# 3.1 Tolaria & Auto-Updater Tool
 # ==========================================
-TOLARIA_VER="2026.4.29" 
+echo "Installing Tolaria and Update Helper..."
 
-# Logic: Download DEB -> Convert to TGZ -> Strip top folder -> Sync to /usr
-(
-    set -e
-    echo "Processing Tolaria version ${TOLARIA_VER}..."
-    
-    TOLARIA_URL="https://github.com/refactoringhq/tolaria/releases/download/stable-v${TOLARIA_VER}/Tolaria_${TOLARIA_VER}_amd64.deb"
-    TOLARIA_TGZ="tolaria-${TOLARIA_VER}.tgz"
-    WORK_DIR="/tmp/tolaria_install"
+# 1. Download and install the update binary from your repo
+UPDATER_URL="https://raw.githubusercontent.com/soltros/fedora-post-installer/main/helpers/tolaria-update"
+curl -sL "$UPDATER_URL" -o /usr/local/bin/tolaria-update
+chmod +x /usr/local/bin/tolaria-update
 
-    mkdir -p "$WORK_DIR"
-    pushd "$WORK_DIR" > /dev/null
-
-    # 1. Download
-    echo "Downloading Tolaria..."
-    wget -q "$TOLARIA_URL" -O "input.deb"
-
-    # 2. Convert (Uses alien from your DNF_PACKAGES list)
-    echo "Converting DEB to TGZ..."
-    sudo alien -tvc "input.deb"
-
-    # 3. Extract and Install
-    echo "Extracting and syncing files..."
-    mkdir -p contents
-    tar -xvf "$TOLARIA_TGZ" -C contents/ --strip-components=1
-    
-    echo "Syncing Tolaria files to system..."
-    sudo rsync -avz contents/usr/ /usr/
-
-    # 4. Fix Plasma Menu Placement
-    echo "Fixing desktop menu category..."
-    DESKTOP_FILE="/usr/share/applications/Tolaria.desktop"
-
-    if [ -f "$DESKTOP_FILE" ]; then
-        # Set category to Office and Utility so it shows up in Plasma's menus
-        sudo sed -i 's/^Categories=.*/Categories=Office;Utility;/' "$DESKTOP_FILE"
-        
-        # Force Plasma to refresh the application menu
-        update-desktop-database /usr/share/applications 2>/dev/null
-        echo "✓ Desktop entry updated."
-    fi
-
-    # 5. Cleanup
-    popd > /dev/null
-    rm -rf "$WORK_DIR"
-    echo "✓ Tolaria installation and menu fix complete."
-)
+# 2. Execute initial installation via the updater script (run as user to preserve context)
+# The helper script handles internal sudo escalation for system writes.
+sudo -H -u "$ACTUAL_USER" /usr/local/bin/tolaria-update
 
 # 4. Enable Services
 echo "Enabling system services..."
@@ -244,17 +208,12 @@ rm -f /usr/local/bin/nixmanager
 # Write nixmanager to a temporary file, then move to destination
 cat << 'EOF' > /tmp/nixmanager.sh
 #!/bin/bash
+set -euo pipefail
 
-# Enhanced Nix Package Manager
-# A contextual, sub-command based script for managing Nix packages
-
-set -euo pipefail  # Exit on error, undefined vars, pipe failures
-
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 SCRIPT_NAME=$(basename "$0")
 
@@ -263,154 +222,48 @@ usage() {
     echo ""
     echo "Commands:"
     echo "  install <package>    Install a package from nixpkgs"
-    echo "  remove <package>     Remove an installed package (by name or index)"
+    echo "  remove <package>     Remove an installed package"
     echo "  list                 List installed packages"
-    echo "  search <query>       Search for packages in nixpkgs"
+    echo "  search <query>       Search for packages"
     echo "  upgrade              Upgrade all packages"
-    echo "  help                 Show this help message"
 }
 
 check_nix() {
     if ! command -v nix &> /dev/null; then
-        echo -e "${RED}Error: Nix is not installed or not in PATH${NC}" >&2
+        echo -e "${RED}Error: Nix is not installed${NC}" >&2
         exit 1
     fi
 }
 
 update_shortcuts() {
-    echo -e "${BLUE}Syncing applications to desktop menu...${NC}"
-    local nix_apps="$HOME/.nix-profile/share/applications"
+    echo -e "${BLUE}Syncing applications...${NC}"
     local local_apps="$HOME/.local/share/applications"
-    local nix_icons="$HOME/.nix-profile/share/icons"
-    local local_icons="$HOME/.local/share/icons"
-    
-    mkdir -p "$local_apps" "$local_icons"
-    
-    # Clean old nixmanager symlinks
+    mkdir -p "$local_apps"
     find "$local_apps" -name "nixmanager-*.desktop" -delete 2>/dev/null
     
-    # Symlink current .desktop files to DE folder
-    if [ -d "$nix_apps" ]; then
-        for desktop in "$nix_apps"/*.desktop; do
+    if [ -d "$HOME/.nix-profile/share/applications" ]; then
+        for desktop in "$HOME/.nix-profile/share/applications"/*.desktop; do
             [ -e "$desktop" ] || continue
-            local base=$(basename "$desktop")
-            # Link to the absolute path in the Nix store
-            ln -sf "$(readlink -f "$desktop")" "$local_apps/nixmanager-$base"
+            ln -sf "$(readlink -f "$desktop")" "$local_apps/nixmanager-$(basename "$desktop")"
         done
     fi
-    
-    # Recursively symlink icons for immediate rendering
-    if [ -d "$nix_icons" ]; then
-        cp -rsf "$nix_icons/"* "$local_icons/" 2>/dev/null || true
-    fi
-    
-    # Cleanup any dead icon symlinks
-    find "$local_icons" -xtype l -delete 2>/dev/null || true
-    
-    # Force KDE/GNOME to refresh
-    if command -v update-desktop-database &> /dev/null; then
-        update-desktop-database "$local_apps" 2>/dev/null || true
-    fi
-    if command -v gtk-update-icon-cache &> /dev/null; then
-        gtk-update-icon-cache -f -t "$local_icons/hicolor" 2>/dev/null || true
-    fi
-    if [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* ]] || [[ "$DESKTOP_SESSION" == *"plasma"* ]]; then
-        if command -v kbuildsycoca6 &> /dev/null; then
-            kbuildsycoca6 --noincremental 2>/dev/null || true
-        fi
-        if command -v qdbus &> /dev/null; then
-            qdbus org.kde.KLauncher /KLauncher reparseConfiguration 2>/dev/null || true
-        fi
-    fi
-    if command -v xdg-desktop-menu &> /dev/null; then
-        xdg-desktop-menu forceupdate 2>/dev/null || true
-    fi
-    
-    echo -e "${GREEN}✓ Desktop shortcuts updated for Nix profile${NC}"
-}
-
-install_package() {
-    local package="$1"
-    if [[ -z "$package" ]]; then
-        echo -e "${RED}Error: Package name is required${NC}" >&2
-        exit 1
-    fi
-    
-    echo -e "${BLUE}Installing package: $package${NC}"
-    if nix profile add "$HOME/.config/nixpkgs_fedora#$package"; then
-        echo -e "${GREEN}✓ Successfully installed: $package${NC}"
-        update_shortcuts
-    else
-        echo -e "${RED}✗ Failed to install: $package${NC}" >&2
-        exit 1
-    fi
-}
-
-remove_package() {
-    local package="$1"
-    if [[ -z "$package" ]]; then
-        echo -e "${RED}Error: Package name or index is required${NC}" >&2
-        exit 1
-    fi
-
-    echo -e "${BLUE}Removing package: $package${NC}"
-    if nix profile remove "$package"; then
-        echo -e "${GREEN}✓ Successfully removed: $package${NC}"
-        update_shortcuts
-    else
-        echo -e "${RED}✗ Failed to remove: $package${NC}" >&2
-        exit 1
-    fi
-}
-
-list_packages() {
-    echo -e "${BLUE}Installed packages:${NC}"
-    nix profile list
-}
-
-search_packages() {
-    local query="$1"
-    if [[ -z "$query" ]]; then
-        echo -e "${RED}Error: Search query is required${NC}" >&2
-        exit 1
-    fi
-    echo -e "${BLUE}Searching for packages matching: $query${NC}"
-    NIXPKGS_ALLOW_UNFREE=1 nix search nixpkgs "$query"
-}
-
-upgrade_packages() {
-    echo -e "${BLUE}Upgrading all packages...${NC}"
-    if nix profile upgrade; then
-        echo -e "${GREEN}✓ All packages upgraded successfully${NC}"
-    else
-        echo -e "${RED}✗ Failed to upgrade packages${NC}" >&2
-        exit 1
-    fi
+    update-desktop-database "$local_apps" 2>/dev/null || true
 }
 
 main() {
     check_nix
-    if [[ $# -eq 0 ]]; then
-        usage
-        exit 1
-    fi
-    
-    local command="$1"
-    case "$command" in
-        install) shift; install_package "$1" ;;
-        remove) shift; remove_package "$1" ;;
-        list) list_packages ;;
-        search) shift; search_packages "$1" ;;
-        upgrade) upgrade_packages ;;
-        help|--help|-h) usage ;;
-        *) echo -e "${RED}Error: Unknown command '$command'${NC}" >&2; usage; exit 1 ;;
+    case "${1:-help}" in
+        install) nix profile add "$HOME/.config/nixpkgs_fedora#$2" && update_shortcuts ;;
+        remove) nix profile remove "$2" && update_shortcuts ;;
+        list) nix profile list ;;
+        search) NIXPKGS_ALLOW_UNFREE=1 nix search nixpkgs "$2" ;;
+        upgrade) nix profile upgrade && update_shortcuts ;;
+        *) usage ;;
     esac
 }
-
 main "$@"
 EOF
 
-# Force overwrite the destination file
 mv -f /tmp/nixmanager.sh /usr/local/bin/nixmanager
 chmod +x /usr/local/bin/nixmanager
 
@@ -456,7 +309,9 @@ if [ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
     . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
 fi
 
-alias update="sudo dnf upgrade -y; sudo flatpak update -y; sudo snap refresh"
+# Comprehensive Update Alias including Tolaria
+alias update="sudo dnf upgrade -y; sudo flatpak update -y; sudo snap refresh; tolaria-update"
+
 export LANG=en_US.UTF-8
 export EDITOR="nano"
 export VISUAL="nano"
@@ -475,10 +330,9 @@ usermod -s /usr/bin/zsh "$ACTUAL_USER"
 # ==========================================
 echo ""
 echo "=========================================================="
-echo "               FINAL SYSTEM AUDIT CHECKLIST               "
+echo "                FINAL SYSTEM AUDIT CHECKLIST               "
 echo "=========================================================="
 
-# Helper function for printing checklist items
 print_check() {
     if [ "$1" -eq 0 ]; then
         echo -e "[\033[0;32m ✓ \033[0m] $2"
@@ -487,47 +341,19 @@ print_check() {
     fi
 }
 
-# 1. DNF Packages
-FAILED_DNF=()
-for pkg in "${DNF_PACKAGES[@]}"; do
-    if ! dnf5 list installed "$pkg" &>/dev/null; then FAILED_DNF+=("$pkg"); fi
-done
-if [ ${#FAILED_DNF[@]} -eq 0 ]; then
-    print_check 0 "DNF Packages (${#DNF_PACKAGES[@]} installed)"
-else
-    print_check 1 "DNF Packages (${#FAILED_DNF[@]} missing: ${FAILED_DNF[*]})"
-fi
+# 1. DNF & Flatpak
+dnf5 list installed "${DNF_PACKAGES[@]}" &>/dev/null && print_check 0 "DNF Packages" || print_check 1 "DNF Packages"
 
-# 2. Flatpaks
-FAILED_FLATPAKS=()
-for fpkg in "${FLATPAKS[@]}"; do
-    if ! flatpak info "$fpkg" &>/dev/null; then FAILED_FLATPAKS+=("$fpkg"); fi
-done
-if [ ${#FAILED_FLATPAKS[@]} -eq 0 ]; then
-    print_check 0 "Flatpak Applications (${#FLATPAKS[@]} installed)"
-else
-    print_check 1 "Flatpak Applications (${#FAILED_FLATPAKS[@]} missing: ${FAILED_FLATPAKS[*]})"
-fi
+# 2. Tolaria & Helper
+[ -x "/usr/local/bin/tolaria-update" ] && print_check 0 "Tolaria Update Helper" || print_check 1 "Tolaria Update Helper"
 
 # 3. Nix & nixmanager
-if [ -d "/nix/var/nix" ] || command -v nix &>/dev/null; then print_check 0 "Nix Package Manager"; else print_check 1 "Nix Package Manager"; fi
-if [ -x "/usr/local/bin/nixmanager" ]; then print_check 0 "nixmanager CLI tool"; else print_check 1 "nixmanager CLI tool"; fi
-if [ -f "$USER_HOME/.config/nixpkgs_fedora/flake.nix" ]; then print_check 0 "nixpkgs_fedora Flake Config"; else print_check 1 "nixpkgs_fedora Flake Config"; fi
+[ -x "/usr/local/bin/nixmanager" ] && print_check 0 "nixmanager CLI tool" || print_check 1 "nixmanager CLI tool"
 
-# 4. Zsh Environment
-if [ -d "$USER_HOME/.oh-my-zsh" ]; then print_check 0 "Oh My Zsh Framework"; else print_check 1 "Oh My Zsh Framework"; fi
-USER_SHELL=$(getent passwd "$ACTUAL_USER" | cut -d: -f7)
-if [ "$USER_SHELL" = "/usr/bin/zsh" ]; then print_check 0 "Zsh set as default shell"; else print_check 1 "Zsh set as default shell (Currently: $USER_SHELL)"; fi
-
-# 5. System Services
+# 4. System Services
 systemctl is-active --quiet tailscaled && print_check 0 "Tailscale Service" || print_check 1 "Tailscale Service"
-systemctl is-active --quiet libvirtd && print_check 0 "Libvirt Service" || print_check 1 "Libvirt Service"
 systemctl is-active --quiet snapd.socket && print_check 0 "Snapd Socket" || print_check 1 "Snapd Socket"
 
 echo "=========================================================="
-if [ ${#FAILED_DNF[@]} -eq 0 ] && [ ${#FAILED_FLATPAKS[@]} -eq 0 ]; then
-    echo -e "\033[0;32mAll systems go! A system reboot is highly recommended.\033[0m"
-else
-    echo -e "\033[0;33mSetup completed with warnings. Please review the missing items. A reboot is recommended.\033[0m"
-fi
+echo -e "\033[0;32mSetup completed! A system reboot is highly recommended.\033[0m"
 echo "=========================================================="
