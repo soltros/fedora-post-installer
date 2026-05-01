@@ -7,7 +7,7 @@ FEDORA_VERSION=$(rpm -E %fedora)
 PURGE_MODE=false
 
 DNF_PACKAGES=(
-    fish rsync just btop ripgrep fd-find git-delta alien
+    fish rsync jq just btop ripgrep fd-find git-delta alien
     lm_sensors udisks2 udiskie linux-firmware* powertop smartmontools 
     usbutils pciutils fwupd fwupd-plugin-flashrom fwupd-plugin-modem-manager 
     fwupd-plugin-uefi-capsule-data xorg-x11-server-Xwayland switcheroo-control
