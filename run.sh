@@ -326,6 +326,49 @@ chown "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.zshrc"
 usermod -s /usr/bin/zsh "$ACTUAL_USER"
 
 # ==========================================
+# GENERATE SSH RESTORATION HELPER
+# ==========================================
+echo "Generating ~/restore-ssh.sh..."
+cat << 'EOF' > "$USER_HOME/restore-ssh.sh"
+#!/bin/bash
+# Local path to your encrypted keys on the server
+REMOTE_PATH="derrik@ubuntu-server:/mnt/hdd4/files/ssh-keys.tar.gpg"
+LOCAL_TMP="/tmp/ssh-keys.tar.gpg"
+
+echo "--- SSH Key Restoration via Rsync ---"
+echo "Ensure Tailscale is connected before proceeding."
+read -p "Continue? [y/N]: " CONFIRM
+[[ ! "$CONFIRM" =~ ^[Yy]$ ]] && exit 1
+
+# Pull the file using rsync
+echo "Pulling encrypted keys from server..."
+rsync -avzP "$REMOTE_PATH" "$LOCAL_TMP"
+
+if [ -f "$LOCAL_TMP" ]; then
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+
+    echo "Decrypting and extracting (strip-components=1)..."
+    # Based on image_3b56a7.png: peel off the 'ssh-keys' parent folder
+    gpg --decrypt "$LOCAL_TMP" | tar -xzvf - --strip-components=1 -C "$HOME/.ssh"
+
+    # Reset permissions for SSH security
+    chmod 600 "$HOME/.ssh/id_ed25519"
+    chmod 644 "$HOME/.ssh/id_ed25519.pub"
+    chmod 600 "$HOME/.ssh/known_hosts"*
+    
+    echo "✓ SSH keys restored. Cleaning up..."
+    rm "$LOCAL_TMP"
+else
+    echo "⚠️ Failed to pull file. Check your Tailscale connection."
+fi
+EOF
+
+# Ensure the new script is owned by you and executable
+chown "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/restore-ssh.sh"
+chmod +x "$USER_HOME/restore-ssh.sh"
+
+# ==========================================
 # 9. FINAL SYSTEM AUDIT CHECKLIST
 # ==========================================
 echo ""
@@ -354,6 +397,13 @@ dnf5 list installed "${DNF_PACKAGES[@]}" &>/dev/null && print_check 0 "DNF Packa
 systemctl is-active --quiet tailscaled && print_check 0 "Tailscale Service" || print_check 1 "Tailscale Service"
 systemctl is-active --quiet snapd.socket && print_check 0 "Snapd Socket" || print_check 1 "Snapd Socket"
 
+# 5. SSH Restoration Helper (Pending Step)
+[ -x "$USER_HOME/restore-ssh.sh" ] && print_check 0 "SSH Restoration Script Created" || print_check 1 "SSH Restoration Script Missing"
+
 echo "=========================================================="
 echo -e "\033[0;32mSetup completed! A system reboot is highly recommended.\033[0m"
+echo ""
+echo "NEXT STEPS:"
+echo "1. Reboot and run 'tailscale up'."
+echo "2. Run '~/restore-ssh.sh' to pull and install your keys."
 echo "=========================================================="
