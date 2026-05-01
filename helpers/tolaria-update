@@ -1,0 +1,92 @@
+#!/bin/bash
+# ==========================================
+# Tolaria Auto-Updater for Fedora (Sudo-Aware)
+# ==========================================
+
+REPO="refactoringhq/tolaria"
+APP_NAME="Tolaria"
+INSTALLED_VER_FILE="/usr/share/tolaria/.version"
+
+# 1. Immediate Sudo Check
+# This triggers the password prompt once at the start
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires administrative privileges to update system files."
+    sudo -v || exit 1
+    # Keep-alive: update existing sudo time stamp until script has finished
+    while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+fi
+
+# 2. Dependencies Check (Run as current user)
+for cmd in curl jq alien rsync wget; do
+    if ! command -v $cmd &> /dev/null; then
+        echo "Error: $cmd is not installed. Please run: sudo dnf install $cmd"
+        exit 1
+    fi
+done
+
+echo "Checking for latest $APP_NAME release..."
+
+# 3. Get Latest Version (GitHub API)
+LATEST_RELEASE_JSON=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
+TOLARIA_VER=$(echo "$LATEST_RELEASE_JSON" | jq -r '.tag_name' | sed -s 's/^v//;s/^stable-v//')
+
+if [ -z "$TOLARIA_VER" ] || [ "$TOLARIA_VER" == "null" ]; then
+    echo "Error: Could not fetch version metadata."
+    exit 1
+fi
+
+# 4. Check current version
+if [ -f "$INSTALLED_VER_FILE" ]; then
+    CURRENT_VER=$(cat "$INSTALLED_VER_FILE")
+else
+    CURRENT_VER="0.0.0"
+fi
+
+if [ "$CURRENT_VER" == "$TOLARIA_VER" ]; then
+    echo "✓ $APP_NAME is already up to date (v$CURRENT_VER)."
+    exit 0
+fi
+
+echo "New version detected: $TOLARIA_VER. Upgrading..."
+
+# 5. Execution Block
+# We use a subshell but call sudo only for the specific write operations
+(
+    set -e
+    TOLARIA_URL="https://github.com/$REPO/releases/download/stable-v${TOLARIA_VER}/Tolaria_${TOLARIA_VER}_amd64.deb"
+    TOLARIA_TGZ="tolaria-${TOLARIA_VER}.tgz"
+    
+    # Use a user-owned temp dir so we don't have permission issues during download/extract
+    WORK_DIR=$(mktemp -d -t tolaria-XXXXXX)
+    pushd "$WORK_DIR" > /dev/null
+
+    echo "Downloading..."
+    wget -q "$TOLARIA_URL" -O "input.deb"
+
+    echo "Converting (DEB -> TGZ)..."
+    # Alien needs sudo to handle ownership/permissions during conversion
+    sudo alien -tvc "input.deb"
+
+    echo "Extracting..."
+    mkdir -p contents
+    tar -xf "$TOLARIA_TGZ" -C contents/ --strip-components=1
+    
+    echo "Syncing to /usr..."
+    # rsync needs sudo to write to /usr
+    sudo rsync -avz --no-perms --no-owner --no-group contents/usr/ /usr/
+
+    # Fix Desktop Entry
+    DESKTOP_FILE="/usr/share/applications/Tolaria.desktop"
+    if [ -f "$DESKTOP_FILE" ]; then
+        sudo sed -i 's/^Categories=.*/Categories=Office;Utility;/' "$DESKTOP_FILE"
+        sudo update-desktop-database /usr/share/applications 2>/dev/null
+    fi
+
+    # Record the version
+    sudo mkdir -p "$(dirname "$INSTALLED_VER_FILE")"
+    echo "$TOLARIA_VER" | sudo tee "$INSTALLED_VER_FILE" > /dev/null
+
+    popd > /dev/null
+    rm -rf "$WORK_DIR"
+    echo "✓ Update to v$TOLARIA_VER complete."
+)
