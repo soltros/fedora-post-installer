@@ -1,0 +1,35 @@
+#!/bin/bash
+# Local path to your encrypted keys on the server
+REMOTE_PATH="derrik@ubuntu-server:/mnt/hdd4/files/ssh-keys.tar.gpg"
+LOCAL_TMP="/tmp/ssh-keys.tar.gpg"
+
+echo "--- SSH Key Restoration via Rsync ---"
+echo "Ensure Tailscale is connected before proceeding."
+read -p "Continue? [y/N]: " CONFIRM
+[[ ! "$CONFIRM" =~ ^[Yy]$ ]] && exit 1
+
+# Pull the file using rsync
+echo "Pulling encrypted keys from server..."
+rsync -avzP "$REMOTE_PATH" "$LOCAL_TMP"
+
+if [ -f "$LOCAL_TMP" ]; then
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+
+    echo "Decrypting and extracting (strip-components=1)..."
+    # REMOVED the 'z' flag because the archive is not gzipped
+    gpg --decrypt "$LOCAL_TMP" | tar -xvf - --strip-components=1 -C "$HOME/.ssh"
+
+    # Reset permissions using wildcards to avoid "No such file" errors
+    # Private keys (no extension)
+    find "$HOME/.ssh" -type f ! -name "*.pub" ! -name "known_hosts*" -exec chmod 600 {} +
+    # Public keys
+    chmod 644 "$HOME/.ssh"/*.pub 2>/dev/null
+    # Known hosts
+    chmod 600 "$HOME/.ssh/known_hosts"* 2>/dev/null
+    
+    echo "✓ SSH keys restored. Cleaning up..."
+    rm "$LOCAL_TMP"
+else
+    echo "⚠️ Failed to pull file. Check your Tailscale connection."
+fi
