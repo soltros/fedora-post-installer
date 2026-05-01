@@ -349,13 +349,18 @@ if [ -f "$LOCAL_TMP" ]; then
     chmod 700 "$HOME/.ssh"
 
     echo "Decrypting and extracting (strip-components=1)..."
-    # Based on image_3b56a7.png: peel off the 'ssh-keys' parent folder
-    gpg --decrypt "$LOCAL_TMP" | tar -xzvf - --strip-components=1 -C "$HOME/.ssh"
+    # Removed 'z' flag: archive is tar, not tar.gz
+    gpg --decrypt "$LOCAL_TMP" | tar -xvf - --strip-components=1 -C "$HOME/.ssh"
 
-    # Reset permissions for SSH security
-    chmod 600 "$HOME/.ssh/id_ed25519"
-    chmod 644 "$HOME/.ssh/id_ed25519.pub"
-    chmod 600 "$HOME/.ssh/known_hosts"*
+    echo "Hardening permissions..."
+    # 1. Private keys: find files without extensions that aren't known_hosts
+    find "$HOME/.ssh" -type f ! -name "*.*" ! -name "known_hosts*" -exec chmod 600 {} +
+    
+    # 2. Public keys
+    chmod 644 "$HOME/.ssh"/*.pub 2>/dev/null
+    
+    # 3. Known hosts
+    chmod 600 "$HOME/.ssh/known_hosts"* 2>/dev/null
     
     echo "✓ SSH keys restored. Cleaning up..."
     rm "$LOCAL_TMP"
