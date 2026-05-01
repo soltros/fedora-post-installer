@@ -310,8 +310,8 @@ if [ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
 fi
 
 # Comprehensive Update Alias including Tolaria
-alias update="sudo dnf upgrade -y; sudo flatpak update -y; sudo snap refresh; tolaria-update"
-
+alias update="sudo dnf upgrade -y; sudo flatpak update -y; sudo snap refresh"
+alias tolaria-update="echo 'updating Tolaria...'; sudo tolaria-update"
 export LANG=en_US.UTF-8
 export EDITOR="nano"
 export VISUAL="nano"
