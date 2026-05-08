@@ -33,6 +33,17 @@ FLATPAKS=(
     org.gustavoperedo.FontDownloader io.github.victoralvesf.aonsoku
 )
 
+NIX_PACKAGES=(
+    discord bitwarden-desktop telegram-desktop pika-backup
+    vlc easyeffects supersonic boxbuddy mission-center
+    protonplus retroarch jellyfin-media-player podman-desktop
+    filezilla zed-editor github-desktop lutris devpod
+    heroic prismlauncher blender audacity inkscape
+    wike slack foliate thunderbird nicotine-plus
+    vscodium signal-desktop bleachbit bottles
+    obsidian obs-studio
+)
+
 # ==========================================
 # ARGUMENT PARSING
 # ==========================================
@@ -176,39 +187,81 @@ sudo -H -u "$ACTUAL_USER" tee "$USER_HOME/.config/nixpkgs_fedora/flake.nix" > /d
 }
 EOF
 
-# Write nixmanager and set permissions
-# (nixmanager cat block from your version goes here)
-# ... [Assuming nixmanager heredoc logic remains same as provided in previous prompt] ...
-# mv -f /tmp/nixmanager.sh /usr/local/bin/nixmanager
-# chmod +x /usr/local/bin/nixmanager
+# Create the nixmanager helper script
+cat << 'EOF' > /usr/local/bin/nixmanager
+#!/bin/bash
+FLAKE_PATH="$HOME/.config/nixpkgs_fedora"
+case $1 in
+    install)
+        nix profile install --impure "$FLAKE_PATH#$2" ;;
+    remove)
+        nix profile remove "$2" ;;
+    upgrade)
+        nix profile upgrade --all ;;
+    list)
+        nix profile list ;;
+    *)
+        echo "Usage: nixmanager {install|remove|upgrade|list} [package]" ;;
+esac
+EOF
+chmod +x /usr/local/bin/nixmanager
 
 # ==========================================
 # 6.1 NIX PACKAGE MIGRATION (USER LEVEL)
 # ==========================================
 echo "Starting migration to Nix packages for $ACTUAL_USER..."
 
-NIX_PACKAGES=(
-    discord bitwarden-desktop telegram-desktop pika-backup
-    vlc easyeffects supersonic boxbuddy mission-center
-    protonplus retroarch jellyfin-media-player podman-desktop
-    filezilla zed-editor github-desktop lutris devpod
-    heroic prismlauncher blender audacity inkscape
-    wike slack foliate thunderbird nicotine-plus
-    vscodium signal-desktop bleachbit bottles
-    obsidian obs-studio
-)
-
 sudo -H -u "$ACTUAL_USER" bash -c '
     if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
         . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
     fi
     for PKG in '"${NIX_PACKAGES[*]}"'; do
-        echo "Installing: $PKG"
+        echo "-------------------------------------------"
+        echo "Installing Nix Package: $PKG"
         /usr/local/bin/nixmanager install "$PKG"
     done
 '
 
 # ==========================================
-# 7. VERIFICATION, 8. ZSH, 9. AUDIT
+# 7. ZSH & SHELL CONFIGURATION
 # ==========================================
-# ... [Rest of your script logic remains as you provided] ...
+echo "Configuring Zsh for $ACTUAL_USER..."
+usermod -s /usr/bin/zsh "$ACTUAL_USER"
+
+sudo -H -u "$ACTUAL_USER" bash -c '
+    if [ ! -d "$HOME/.oh-my-zsh" ]; then
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+    fi
+'
+
+# Generate .zshrc with Nix integration
+sudo -H -u "$ACTUAL_USER" tee "$USER_HOME/.zshrc" > /dev/null << 'EOF'
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="robbyrussell"
+plugins=(git sudo)
+source $ZSH/oh-my-zsh.sh
+
+# Nix Environment
+if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+fi
+
+# Aliases
+alias ninst="nixmanager install"
+alias nrem="nixmanager remove"
+alias nup="nixmanager upgrade"
+alias nls="nixmanager list"
+alias ls="ls --color=auto"
+alias grep="grep --color=auto"
+EOF
+
+# ==========================================
+# 8. FINAL SYSTEM AUDIT
+# ==========================================
+echo -e "\n--- Final System Audit ---"
+echo "DNF Packages: $(rpm -qa | grep -Ec "$(echo "${DNF_PACKAGES[*]%[*]}" | tr ' ' '|')") installed."
+echo "Flatpaks: $(flatpak list --columns=application | grep -c . || echo 0) installed."
+echo "Nix status: $(command -v nix >/dev/null && echo "Active" || echo "Not Found")"
+echo "Shell: $(getent passwd "$ACTUAL_USER" | cut -d: -f7)"
+echo "-------------------------------------------"
+echo "Setup Complete! Please log out and back in."
