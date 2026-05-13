@@ -149,6 +149,35 @@ dnf5 install -y --skip-broken "${DNF_PACKAGES[@]}"
 # ==========================================
 echo "Installing Tolaria and Update Helper..."
 
+
+TOLARIA_VER="2026.4.29" 
+
+
+(
+
+    set -e
+    TOLARIA_URL="https://github.com/refactoringhq/tolaria/releases/download/stable-v${TOLARIA_VER}/Tolaria_${TOLARIA_VER}_amd64.deb"
+    TOLARIA_TGZ="tolaria-${TOLARIA_VER}.tgz"
+    WORK_DIR="/tmp/tolaria_install"
+    mkdir -p "$WORK_DIR"
+    pushd "$WORK_DIR" > /dev/null
+    wget -q "$TOLARIA_URL" -O "input.deb"
+    sudo alien -tvc "input.deb"
+    mkdir -p contents
+    tar -xvf "$TOLARIA_TGZ" -C contents/ --strip-components=1
+    sudo rsync -avz contents/usr/ /usr/
+    DESKTOP_FILE="/usr/share/applications/Tolaria.desktop"
+    if [ -f "$DESKTOP_FILE" ]; then
+        sudo sed -i 's/^Categories=.*/Categories=Office;Utility;/' "$DESKTOP_FILE"
+        update-desktop-database /usr/share/applications 2>/dev/null
+
+    fi
+    
+    popd > /dev/null
+    rm -rf "$WORK_DIR"
+
+)
+
 # 1. Download and install the update binary from your repo
 UPDATER_URL="https://raw.githubusercontent.com/soltros/fedora-post-installer/main/helpers/tolaria-update"
 curl -sL "$UPDATER_URL" -o /usr/local/bin/tolaria-update
