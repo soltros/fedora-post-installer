@@ -24,6 +24,11 @@ DNF_PACKAGES=(
     libappindicator-gtk3-devel librsvg2-devel
 )
 
+DEV_PKGS=(
+    vulkan-devel glslc glslang python-devel @development-tools 
+    cmake git-lfs curlpp-devel gcc-c++ spirv-headers-devel spirv-tools-devel
+)
+
 FLATPAKS=(
     net.waterfox.waterfox com.discordapp.Discord com.github.tchx84.Flatseal
     com.bitwarden.desktop org.telegram.desktop it.mijorus.gearlever 
@@ -158,6 +163,7 @@ dnf5 -y remove firefox
 echo "Installing workstation packages..."
 dnf5 upgrade -y --refresh
 dnf5 install -y --skip-broken "${DNF_PACKAGES[@]}"
+dnf5 install -y --skip-broken "${DEV_PKGS[@]}"
 
 # ==========================================
 # 3.1 Tolaria & Auto-Updater Tool
@@ -183,6 +189,15 @@ ln -s /var/lib/snapd/snap /snap 2>/dev/null || true
 echo "Configuring Flatpaks..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install -y flathub "${FLATPAKS[@]}"
+
+# ==========================================
+# 3.2 LlamaCPP Vulkan compilation
+# ==========================================
+echo "Cloning Llama CPP and building..."
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build -DGGML_VULKAN=1
+cmake --build build --config Release
 
 # ==========================================
 # 6. NIX PACKAGE MANAGER SETUP
