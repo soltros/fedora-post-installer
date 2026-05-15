@@ -5,6 +5,7 @@
 # ==========================================
 FEDORA_VERSION=$(rpm -E %fedora)
 PURGE_MODE=false
+INSTALL_LLAMA=true
 
 DNF_PACKAGES=(
     fish rsync jq just btop ripgrep fd-find git-delta alien
@@ -55,7 +56,8 @@ FLATPAKS=(
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -v|--version) FEDORA_VERSION="$2"; shift ;;
-        --remove) PURGE_MODE=true ;;
+        --remove)     PURGE_MODE=true ;;
+        --no-llama)   INSTALL_LLAMA=false ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
@@ -193,11 +195,37 @@ flatpak install -y flathub "${FLATPAKS[@]}"
 # ==========================================
 # 3.2 LlamaCPP Vulkan compilation
 # ==========================================
-echo "Cloning Llama CPP and building..."
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-cmake -B build -DGGML_VULKAN=1
-cmake --build build --config Release
+if [ "$INSTALL_LLAMA" = true ]; then
+    echo "--- Building LlamaCPP with Vulkan support ---"
+    
+    LLAMA_DIR="$USER_HOME/llama.cpp"
+
+    if [ ! -d "$LLAMA_DIR" ]; then
+        sudo -H -u "$ACTUAL_USER" git clone https://github.com/ggerganov/llama.cpp "$LLAMA_DIR"
+    else
+        echo "Llama.cpp directory exists, pulling latest master..."
+        # Running git pull as the user in the specific directory
+        sudo -H -u "$ACTUAL_USER" bash -c "cd $LLAMA_DIR && git pull origin master"
+    fi
+
+    # Navigate to the directory for the build steps
+    cd "$LLAMA_DIR" || exit
+
+    echo "Configuring with CMake..."
+    sudo -H -u "$ACTUAL_USER" cmake -B build -DGGML_VULKAN=1
+    
+    echo "Compiling (using all available cores)..."
+    sudo -H -u "$ACTUAL_USER" cmake --build build --config Release -j$(nproc)
+    
+    # Check if build succeeded
+    if [ -f "$LLAMA_DIR/build/bin/llama-cli" ]; then
+        echo "✓ Llama.cpp built successfully."
+    else
+        echo "⚠️ Llama.cpp build failed."
+    fi
+else
+    echo "--- Skipping LlamaCPP build (--no-llama detected) ---"
+fi
 
 # ==========================================
 # 6. NIX PACKAGE MANAGER SETUP
@@ -392,7 +420,7 @@ chmod +x "$USER_HOME/restore-ssh.sh"
 # ==========================================
 echo ""
 echo "=========================================================="
-echo "                FINAL SYSTEM AUDIT CHECKLIST               "
+echo "                FINAL SYSTEM AUDIT CHECKLIST                "
 echo "=========================================================="
 
 print_check() {
@@ -409,6 +437,11 @@ dnf5 list installed "${DNF_PACKAGES[@]}" &>/dev/null && print_check 0 "DNF Packa
 systemctl is-active --quiet tailscaled && print_check 0 "Tailscale Service" || print_check 1 "Tailscale Service"
 systemctl is-active --quiet snapd.socket && print_check 0 "Snapd Socket" || print_check 1 "Snapd Socket"
 [ -x "$USER_HOME/restore-ssh.sh" ] && print_check 0 "SSH Restoration Script Created" || print_check 1 "SSH Restoration Script Missing"
+
+# Conditional Llama Check
+if [ "$INSTALL_LLAMA" = true ]; then
+    [ -f "$USER_HOME/llama.cpp/build/bin/llama-cli" ] && print_check 0 "LlamaCPP Vulkan Build" || print_check 1 "LlamaCPP Vulkan Build"
+fi
 
 echo "=========================================================="
 echo -e "\033[0;32mSetup completed! A system reboot is highly recommended.\033[0m"
