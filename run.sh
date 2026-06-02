@@ -140,21 +140,8 @@ dnf5 install -y --skip-broken \
     "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm" \
     "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm"
 
-# Write a proper .repo file for Terra instead of using --repofrompath,
-# which causes "Id is present more than once" errors on re-runs or when
-# terra-release is already partially installed.
-TERRA_REPO_FILE="/etc/yum.repos.d/terra.repo"
-if [ ! -f "$TERRA_REPO_FILE" ]; then
-    cat > "$TERRA_REPO_FILE" << REPO_EOF
-[terra]
-name=Terra - Fedora \$releasever
-baseurl=https://repos.fyralabs.com/terra${FEDORA_VERSION}/
-enabled=1
-gpgcheck=1
-gpgkey=https://repos.fyralabs.com/terra${FEDORA_VERSION}/key.gpg
-REPO_EOF
-fi
-dnf5 install -y --skip-broken terra-release
+# Install Terra release package
+dnf install --nogpgcheck --repofrompath "terra,https://repos.fyralabs.com/terra$FEDORA_VERSION" terra-release
 
 # 2. KDE Group Installs
 echo "Installing KDE Environment Groups..."
